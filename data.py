@@ -622,10 +622,7 @@ class PhysicsFleXDataset(Dataset):
         Each data point is consisted of a whole trajectory
         """
         args = self.args
-        if args.stage in ['dy']:
-            return self.n_rollout * (args.time_step - args.discard_frames - args.sequence_length + 1)
-        elif args.stage in ['pos', 'param']:
-            return self.n_rollout * (args.time_step - args.discard_frames - 30 + 1)
+        return self.n_rollout * (args.time_step - args.sequence_length + 1)
 
     def load_data(self, name):
         print("Loading stat from %s ..." % self.stat_path)
@@ -685,13 +682,10 @@ class PhysicsFleXDataset(Dataset):
         """
         args = self.args
 
-        if args.stage in ['dy']:
-            offset = args.time_step - args.discard_frames - args.sequence_length + 1
-        elif args.stage in ['pos', 'param']:
-            offset = args.time_step - args.discard_frames - 30 + 1
+        offset = args.time_step - args.sequence_length + 1
 
         idx_rollout = idx // offset
-        st_idx = idx % offset + args.discard_frames
+        st_idx = idx % offset
         ed_idx = st_idx + args.sequence_length
 
         if args.stage in ['dy']:

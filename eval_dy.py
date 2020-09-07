@@ -125,7 +125,9 @@ for idx_episode in range(len(infos)):
 
             if step_id == st_idx:
                 # state_cur (unnormalized): n_his x (n_p + n_s) x state_dim
-                state_cur = p_gt[step_id - args.n_his:step_id].cuda()
+                state_cur = p_gt[step_id - args.n_his:step_id]
+                if use_gpu:
+                    state_cur = state_cur.cuda()
 
             if step_id % 50 == 0:
                 print("Step %d / %d" % (step_id, ed_idx))
@@ -161,12 +163,16 @@ for idx_episode in range(len(infos)):
 
             # concatenate the state of the shapes
             # pred_pos (unnormalized): B x (n_p + n_s) x state_dim
-            gt_pos = p_gt[step_id].cuda().unsqueeze(0)
+            gt_pos = p_gt[step_id].unsqueeze(0)
+            if use_gpu:
+                gt_pos = gt_pos.cuda()
             pred_pos = torch.cat([pred_pos, gt_pos[:, n_particle:]], 1)
 
             # gt_motion_norm (normalized): B x (n_p + n_s) x state_dim
             # pred_motion_norm (normalized): B x (n_p + n_s) x state_dim
-            gt_motion = (p_gt[step_id] - p_gt[step_id - 1]).cuda().unsqueeze(0)
+            gt_motion = (p_gt[step_id] - p_gt[step_id - 1]).unsqueeze(0)
+            if use_gpu:
+                gt_motion = gt_motion.cuda()
             mean_d, std_d = model.stat[2:]
             gt_motion_norm = (gt_motion - mean_d) / std_d
             pred_motion_norm = torch.cat([pred_motion_norm, gt_motion_norm[:, n_particle:]], 1)
