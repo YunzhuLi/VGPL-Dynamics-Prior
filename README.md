@@ -28,7 +28,8 @@ Go to the project folder, and type one of the following commands (assuming you h
 
 Download the training data from the following links, and put them in the `data` folder.
 
-[[MassRope]](https://www.dropbox.com/s/mqc87hwo9sdubnu/data_MassRope.zip?dl=0) [[RigidFall]](https://www.dropbox.com/s/hra0okrkg99h0bb/data_RigidFall.zip?dl=0)
+- MassRope [[DropBox]](https://www.dropbox.com/s/mqc87hwo9sdubnu/data_MassRope.zip?dl=0) (1.14 GB)
+- RigidFall [[DropBox]](https://www.dropbox.com/s/hra0okrkg99h0bb/data_RigidFall.zip?dl=0) (2.9 GB)
 
 Type the following commands for training the model:
 
