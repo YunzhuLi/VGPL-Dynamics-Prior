@@ -1,0 +1,12 @@
+.DS_Store
+.idea/
+.ipynb_checkpoints/
+__pycache__/
+debug/
+files/
+data*/
+dump_*/
+
+*.swp
+*.swo
+

@@ -1,0 +1,11 @@
+python eval_dy.py 		\
+	--env MassRope 		\
+	--stage dy 		\
+	--eval_epoch 85		\
+	--eval_iter 110000	\
+	--eval_set demo 	\
+	--verbose_data 0	\
+	--sequence_length 100	\
+	--n_his 4		\
+	--augment 0.05		\
+	--vispy 1
