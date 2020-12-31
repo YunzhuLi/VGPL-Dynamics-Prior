@@ -50,7 +50,7 @@ If you find this codebase useful in your research, please consider citing:
     @inproceedings{li2020visual,
         Title={Visual Grounding of Learned Physical Models},
         Author={Li, Yunzhu and Lin, Toru and Yi, Kexin and Bear, Daniel and Yamins, Daniel L.K. and Wu, Jiajun and Tenenbaum, Joshua B. and Torralba, Antonio},
-        Booktitle={ICLR},
+        Booktitle={ICML},
         Year={2020}
     }
 
