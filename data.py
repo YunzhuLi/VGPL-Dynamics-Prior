@@ -379,7 +379,7 @@ def find_relations_neighbor(pos, query_idx, anchor_idx, radius, order, var=False
         if count_neighbors == 0:
             continue
 
-        receiver = np.ones(count_neighbors, dtype=np.int) * query_idx[i]
+        receiver = np.ones(count_neighbors, dtype=int) * query_idx[i]
         sender = np.array(anchor_idx[neighbors[i]])
 
         # receiver, sender, relation_type
@@ -419,7 +419,7 @@ def find_k_relations_neighbor(k, positions, query_idx, anchor_idx, radius, order
             pass
 
     for i in range(len(neighbors)):
-        receiver = np.ones(min_neighbors, dtype=np.int) * query_idx[i]
+        receiver = np.ones(min_neighbors, dtype=int) * query_idx[i]
         sender = np.array(anchor_idx[neighbors[i][:min_neighbors]])
 
         # receiver, sender, relation_type
@@ -516,7 +516,7 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
             print(np.sort(dis)[:10])
         '''
 
-        floor = np.ones(nodes.shape[0], dtype=np.int) * n_particle
+        floor = np.ones(nodes.shape[0], dtype=int) * n_particle
         rels += [np.stack([nodes, floor], axis=1)]
 
     elif args.env == 'MassRope':
@@ -530,7 +530,7 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
             print(np.sort(dis)[:10])
         '''
 
-        pin = np.ones(nodes.shape[0], dtype=np.int) * n_particle
+        pin = np.ones(nodes.shape[0], dtype=int) * n_particle
         rels += [np.stack([nodes, pin], axis=1)]
 
     else:
@@ -588,6 +588,37 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
     # particle (unnormalized): (n_p + n_s) x state_dim
     # Rr, Rs: n_rel x (n_p + n_s)
     return attr, particle, Rr, Rs
+
+
+class FluidLabDataset(Dataset):
+    def __init__(self, args, phase):
+        self.args = args
+        self.phase = phase
+        self.data_dir = os.path.join(self.args.dataf, phase)
+        self.vision_dir = self.data_dir + "_vision"
+        self.stat_path = os.path.join(self.args.dataf, 'stat.h5') 
+        if args.gen_data:
+            os.system('mkdir -p ' + self.data_dir)
+        if args.gen_vision:
+            os.system('mkdir -p ' + self.vision_dir)
+        if args.env in ['LatteArt']:
+            self.data_names = ["x", "v", "used", "agent"]
+        else:
+            raise AssertionError("Unsupported env")
+        ratio = self.args.train_valid_ratio
+        if phase == 'train':
+            self.n_rollout = int(self.args.n_rollout * ratio)
+        elif phase == 'valid':
+            self.n_rollout = self.args.n_rollout - int(self.args.n_rollout * ratio)
+        else:
+            raise AssertionError("Unknown phase")
+
+    def __len__(self):
+        """
+        Each data point is consisted of a whole trajectory
+        """
+        args = self.args
+        return self.n_rollout * (args.time_step - args.sequence_length + 1)
 
 
 class PhysicsFleXDataset(Dataset):
