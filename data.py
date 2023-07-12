@@ -494,9 +494,11 @@ def get_scene_info(data):
     return n_particles, n_shapes, scene_params
 
 
-def get_scene_info_fluidlab(data):
+def get_scene_info_fluidlab(data, params_path, idxs):
+    p = h5py.File(params_path, "r") 
+    scene_params = np.array(p.get("body_id"))[idxs]
     n_shapes = 1
-    return n_shapes
+    return n_shapes, scene_params
 
 
 def get_env_group(args, n_particles, scene_params, use_gpu=False):
@@ -529,8 +531,8 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
 
     elif args.env == "LatteArt":
         p_rigid[:] = 0
-        p_instance[:, : n_particles // 2, 0] = 1
-        p_instance[:, n_particles // 2 :, 0] = 0
+        p_instance[:, :, 0] = (scene_params == 0)
+        p_instance[:, :, 1] = 1 - p_instance[:, :, 0]
 
     else:
         raise AssertionError("Unsupported env")
@@ -666,7 +668,7 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=100):
+    def __init__(self, args, phase, K=300):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
@@ -724,12 +726,12 @@ class FluidLabDataset(Dataset):
                 points = data[0]
                 # load scene param
                 if t == st_idx:
-                    n_shape = get_scene_info_fluidlab(data)
-                    scene_params = []
+                    params_path = os.path.join(self.data_dir, str(idx_rollout), "stat.hdf5") 
                     points = torch.from_numpy(points).unsqueeze(0).to(self.device)
                     points, sampled_idxs = sample_farthest_points(points, K=self.K)
                     sampled_idxs = sampled_idxs.squeeze(0).cpu().numpy()
-                    scene_params = sampled_idxs # We can get away with doing this in the current code lol
+                    n_shape, scene_params = get_scene_info_fluidlab(data, params_path, sampled_idxs)
+                    # scene_params = sampled_idxs # We can get away with doing this in the current code lol
                     points = points.squeeze(0)
                     n_particle = points.shape[0]
 

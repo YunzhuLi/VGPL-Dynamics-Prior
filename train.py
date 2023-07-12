@@ -129,6 +129,7 @@ def main():
 
     for epoch in range(st_epoch, args.n_epoch):
         for phase in phases:
+            print("Cowabunga!")
             model.train(phase == "train")
 
             meter_loss = AverageMeter()
@@ -142,8 +143,6 @@ def main():
             bar = ProgressBar(maxval=len(dataloaders[phase]))
 
             for i, data in bar(enumerate(dataloaders[phase])):
-                if i > 100:
-                    break
                 # each "data" is a trajectory of sequence_length time steps
 
                 if args.stage == "dy":
