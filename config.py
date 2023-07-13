@@ -172,7 +172,7 @@ def gen_args():
         args.mean_d = np.array([-0.00097918, -0.00033966, -0.00080952])
         args.std_d = np.array([0.02086366, 0.0145161, 0.01856096])
     elif args.env == "LatteArt":
-        args.n_rollout = 10
+        args.n_rollout = 1000
         args.time_step = 250
         args.state_dim = 3
         args.attr_dim = 0

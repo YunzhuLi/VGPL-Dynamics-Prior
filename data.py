@@ -494,9 +494,15 @@ def get_scene_info(data):
     return n_particles, n_shapes, scene_params
 
 
-def get_scene_info_fluidlab(data, params_path, idxs):
-    p = h5py.File(params_path, "r") 
-    scene_params = np.array(p.get("body_id"))[idxs]
+def get_scene_info_fluidlab(n_rollouts, data_path):
+    # data_path: "..... data/data_LatteArt/train/"
+    for i in range(n_rollouts):
+        params_path = os.path.join("data_path", str(i), "stat.hdf5")
+        p = h5py.File(params_path, "r") 
+        scene_params = np.array(p.get("body_id"))
+        print(scene_params.shape)
+        p.close()
+        raise NotImplementedError
     n_shapes = 1
     return n_shapes, scene_params
 
@@ -668,20 +674,21 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=300):
+    def __init__(self, args, phase, K=100):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
         self.K = K 
         self.data_dir = os.path.join(self.args.dataf, phase)
         self.vision_dir = self.data_dir + "_vision"
-        self.stat_path = os.path.join(self.args.dataf, "stat.h5")
+        self.stat_path = os.path.join(self.args.dataf, "stat.h5") 
+        get_scene_info_fluidlab(args.n_rollout, self.data_dir)
         if args.gen_data:
             os.system("mkdir -p " + self.data_dir)
         if args.gen_vision:
             os.system("mkdir -p " + self.vision_dir)
         if args.env in ["LatteArt"]:
-            self.data_names = ["x", "v", "used", "agent"]
+            self.data_names = ["x"]
         else:
             raise AssertionError("Unsupported env")
         ratio = self.args.train_valid_ratio

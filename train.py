@@ -1,4 +1,5 @@
 import os
+import tqdm
 # import wandb
 import time
 import sys
@@ -129,7 +130,6 @@ def main():
 
     for epoch in range(st_epoch, args.n_epoch):
         for phase in phases:
-            print("Cowabunga!")
             model.train(phase == "train")
 
             meter_loss = AverageMeter()
@@ -140,11 +140,8 @@ def main():
 
             meter_loss_param = AverageMeter()
 
-            bar = ProgressBar(maxval=len(dataloaders[phase]))
-
-            for i, data in bar(enumerate(dataloaders[phase])):
-                # each "data" is a trajectory of sequence_length time steps
-
+            # bar = ProgressBar(maxval=len(dataloaders[phase]))
+            for i, data in tqdm.tqdm(enumerate(dataloaders[phase])):
                 if args.stage == "dy":
                     # attrs: B x (n_p + n_s) x attr_dim
                     # particles: B x seq_length x (n_p + n_s) x state_dim
