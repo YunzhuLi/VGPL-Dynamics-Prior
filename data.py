@@ -1,9 +1,9 @@
-import multiprocessing as mp
+from multiprocessing import Pool, shared_memory
 import os
 import cv2
 import time
-
 import h5py
+import tqdm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d, Axes3D
 from pytorch3d.ops import sample_farthest_points
@@ -494,17 +494,71 @@ def get_scene_info(data):
     return n_particles, n_shapes, scene_params
 
 
-def get_scene_info_fluidlab(n_rollouts, data_path):
-    # data_path: "..... data/data_LatteArt/train/"
-    for i in range(n_rollouts):
-        params_path = os.path.join("data_path", str(i), "stat.hdf5")
-        p = h5py.File(params_path, "r") 
-        scene_params = np.array(p.get("body_id"))
-        print(scene_params.shape)
-        p.close()
-        raise NotImplementedError
+def worker_func(args):
+    idx, data_path, k, state_dim = args
+    particles_path = os.path.join(data_path, str(idx), "x.npy")
+    particles_i = np.load(particles_path, mmap_mode="r")[:, :k]
+
+    # Access the existing shared memory
+    existing_shm = shared_memory.SharedMemory(name=shm_name)
+    np_array = np.ndarray(
+        (n_rollout, time_step, k, state_dim), dtype="float64", buffer=existing_shm.buf
+    )
+
+    # Write data to shared memory
+    np_array[idx] = particles_i
+    existing_shm.close()
+
+
+def get_scene_info_fluidlab(args, data_path):
+    global shm_name, n_rollout, time_step
+    n_rollout, time_step = args.n_rollout, args.time_step
+    k, state_dim = args.k, args.state_dim
+    particles = np.zeros((n_rollout, time_step, k, state_dim))
+
+    shm = shared_memory.SharedMemory(create=True, size=particles.nbytes)
+    shm_name = shm.name  # Save shared memory name globally
+    np_array = np.ndarray(
+        (n_rollout, time_step, k, state_dim), dtype="float64", buffer=shm.buf
+    )
+    np_array[:] = particles[:]
+
+    with Pool(4) as pool:
+        pool.map(worker_func, [(i, data_path, k, state_dim) for i in range(n_rollout)])
+
+    # Load scene params
+    params_path = os.path.join(data_path, str(100), "stat.npy")
+    try:
+        scene_params = np.load(params_path)
+    except:
+        scene_params = None  # Or some default value
+
+    # Close and unlink shared memory
+    particles = np_array[:]
+    shm.close()
+    shm.unlink()
+
     n_shapes = 1
-    return n_shapes, scene_params
+    return particles, n_shapes, scene_params
+
+
+# def get_scene_info_fluidlab(args, data_path):
+#     particles = np.zeros((args.n_rollout, args.time_step, args.k, args.state_dim))
+#     for i in tqdm.tqdm(range(args.n_rollout)):
+#         if i == 100:
+#             params_path = os.path.join(data_path, str(i), "stat.npy")
+#             try:
+#                 scene_params = np.load(params_path)
+#             except:
+#                 pass
+#         fps_path = os.path.join(data_path, str(i), "fps.npy")
+#         # sampled_indices_i = np.load(fps_path)
+#         particles_path = os.path.join(data_path, str(i), "x.npy")
+#         particles_i = np.load(particles_path, mmap_mode="r")[:, :args.k]
+#         particles[i] = particles_i
+
+#     n_shapes = 1
+#     return particles, n_shapes, scene_params
 
 
 def get_env_group(args, n_particles, scene_params, use_gpu=False):
@@ -537,7 +591,7 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
 
     elif args.env == "LatteArt":
         p_rigid[:] = 0
-        p_instance[:, :, 0] = (scene_params == 0)
+        p_instance[:, :, 0] = scene_params == 0
         p_instance[:, :, 1] = 1 - p_instance[:, :, 0]
 
     else:
@@ -606,7 +660,9 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
 
     elif args.env == "LatteArt":
         pos = (
-            positions.cpu().numpy()[:n_particle] if torch.is_tensor(positions) else positions[:n_particle]
+            positions.cpu().numpy()[:n_particle]
+            if torch.is_tensor(positions)
+            else positions[:n_particle]
         )
         # hard-code the position of the cup boundary (treat it as a particle at the center)
         pos_boundary = np.array([[0.5, 0.75, 0.5]])
@@ -674,15 +730,17 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=100):
+    def __init__(self, args, phase, K=300):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
-        self.K = K 
+        args.k = self.K = K
         self.data_dir = os.path.join(self.args.dataf, phase)
         self.vision_dir = self.data_dir + "_vision"
-        self.stat_path = os.path.join(self.args.dataf, "stat.h5") 
-        get_scene_info_fluidlab(args.n_rollout, self.data_dir)
+        self.stat_path = os.path.join(self.args.dataf, "stat.h5")
+        self.particles, self.n_shapes, self.scene_params = get_scene_info_fluidlab(
+            args, self.data_dir
+        )
         if args.gen_data:
             os.system("mkdir -p " + self.data_dir)
         if args.gen_vision:
@@ -729,15 +787,20 @@ class FluidLabDataset(Dataset):
                 data_path = os.path.join(
                     self.data_dir, str(idx_rollout), str(t) + ".hdf5"
                 )
-                data = load_data(self.data_names, data_path, sampled_idxs)
-                points = data[0]
+                # data = load_data(self.data_names, data_path, sampled_idxs)
+                # points = data[0]
+                points = np.random.rand(300, 3)
                 # load scene param
                 if t == st_idx:
-                    params_path = os.path.join(self.data_dir, str(idx_rollout), "stat.hdf5") 
+                    params_path = os.path.join(
+                        self.data_dir, str(idx_rollout), "stat.hdf5"
+                    )
                     points = torch.from_numpy(points).unsqueeze(0).to(self.device)
                     points, sampled_idxs = sample_farthest_points(points, K=self.K)
                     sampled_idxs = sampled_idxs.squeeze(0).cpu().numpy()
-                    n_shape, scene_params = get_scene_info_fluidlab(data, params_path, sampled_idxs)
+                    n_shape, scene_params = get_scene_info_fluidlab(
+                        data, params_path, sampled_idxs
+                    )
                     # scene_params = sampled_idxs # We can get away with doing this in the current code lol
                     points = points.squeeze(0)
                     n_particle = points.shape[0]
