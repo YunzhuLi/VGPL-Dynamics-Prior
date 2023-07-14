@@ -1,11 +1,11 @@
 CUDA_VISIBLE_DEVICES=0		\
-python train.py 		\
-	--env MassRope 		\
+python -m pudb train.py 		\
+	--env LatteArt 		\
 	--stage dy		\
 	--gen_data 0 		\
 	--gen_stat 0		\
 	--gen_vision 0		\
-	--num_workers 10 	\
+	--num_workers 2	\
 	--resume 0		\
 	--resume_epoch 0	\
 	--resume_iter 0		\

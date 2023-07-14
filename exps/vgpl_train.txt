@@ -1,0 +1,1 @@
+bash /viscam/u/mnath/VGPL-Dynamics-Prior/scripts/dynamics/train_MassRope_dy.sh
