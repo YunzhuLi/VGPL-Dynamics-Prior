@@ -10,3 +10,6 @@ dump_*/
 *.swp
 *.swo
 
+.vscode/
+launch_files/
+slurm_logs/

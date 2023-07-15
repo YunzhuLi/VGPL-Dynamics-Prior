@@ -494,50 +494,63 @@ def get_scene_info(data):
     return n_particles, n_shapes, scene_params
 
 
+from time import time
 def worker_func(args):
     idx, data_path, k, state_dim = args
-    particles_path = os.path.join(data_path, str(idx), "x.npy")
-    particles_i = np.load(particles_path, mmap_mode="r")[:, :k]
-
+    particles_path = os.path.join(data_path, str(idx), "x_t.npy")
+    indices_path = os.path.join(data_path, str(idx), "fps.npy")
+    indices_i = np.load(indices_path, mmap_mode="r+")
+    loaded_particles = np.load(particles_path, mmap_mode="r+")
+    particles_i = loaded_particles[indices_i]
     # Access the existing shared memory
     existing_shm = shared_memory.SharedMemory(name=shm_name)
+    existing_shm_indices = shared_memory.SharedMemory(name=shm_name_indices)
     np_array = np.ndarray(
-        (n_rollout, time_step, k, state_dim), dtype="float64", buffer=existing_shm.buf
+        (n_rollout, k, time_step, state_dim), dtype="float", buffer=existing_shm.buf
+    )
+    np_array_indices = np.ndarray(
+        (n_rollout, k), dtype=int, buffer=existing_shm_indices.buf
     )
 
     # Write data to shared memory
     np_array[idx] = particles_i
+    np_array_indices[idx] = indices_i
+    existing_shm_indices.close()
     existing_shm.close()
 
 
 def get_scene_info_fluidlab(args, data_path):
-    global shm_name, n_rollout, time_step
+    global shm_name, shm_name_indices, n_rollout, time_step
     n_rollout, time_step = args.n_rollout, args.time_step
     k, state_dim = args.k, args.state_dim
-    particles = np.zeros((n_rollout, time_step, k, state_dim))
-
+    particles = np.zeros((n_rollout, k, time_step, state_dim))
+    sampled_indices = np.zeros((n_rollout, k), dtype=int)
     shm = shared_memory.SharedMemory(create=True, size=particles.nbytes)
+    shm_indices = shared_memory.SharedMemory(create=True, size=sampled_indices.nbytes)
     shm_name = shm.name  # Save shared memory name globally
+    shm_name_indices = shm_indices.name
     np_array = np.ndarray(
-        (n_rollout, time_step, k, state_dim), dtype="float64", buffer=shm.buf
+        (n_rollout, k, time_step, state_dim), dtype="float64", buffer=shm.buf
     )
+    np_array_indices= np.ndarray(
+        (n_rollout, k), dtype=int, buffer=shm_indices.buf
+    )
+    np_array_indices[:] = sampled_indices[:]
     np_array[:] = particles[:]
 
-    with Pool(4) as pool:
+    a = time()
+    with Pool(10) as pool:
         pool.map(worker_func, [(i, data_path, k, state_dim) for i in range(n_rollout)])
-
+    print(time() - a, "seconds")
     # Load scene params
     params_path = os.path.join(data_path, str(100), "stat.npy")
-    try:
-        scene_params = np.load(params_path)
-    except:
-        scene_params = None  # Or some default value
-
+    scene_params = np.load(params_path, mmap_mode="r")
+    scene_params = np.expand_dims(scene_params.copy(), 0)
+    scene_params = np.squeeze(scene_params[:, np_array_indices], 0)
     # Close and unlink shared memory
-    particles = np_array[:]
+    particles = np.copy(np_array.transpose(0, 2, 1, 3)[:])
     shm.close()
     shm.unlink()
-
     n_shapes = 1
     return particles, n_shapes, scene_params
 
@@ -545,18 +558,18 @@ def get_scene_info_fluidlab(args, data_path):
 # def get_scene_info_fluidlab(args, data_path):
 #     particles = np.zeros((args.n_rollout, args.time_step, args.k, args.state_dim))
 #     for i in tqdm.tqdm(range(args.n_rollout)):
-#         if i == 100:
-#             params_path = os.path.join(data_path, str(i), "stat.npy")
-#             try:
-#                 scene_params = np.load(params_path)
-#             except:
-#                 pass
+#         # if i == 100:
+#         #     params_path = os.path.join(data_path, str(i), "stat.npy")
+#         #     try:
+#         #         scene_params = np.load(params_path)
+#         #     except:
+#         #         pass
 #         fps_path = os.path.join(data_path, str(i), "fps.npy")
-#         # sampled_indices_i = np.load(fps_path)
+#         sampled_indices_i = np.load(fps_path, mmap_mode="r")
 #         particles_path = os.path.join(data_path, str(i), "x.npy")
-#         particles_i = np.load(particles_path, mmap_mode="r")[:, :args.k]
+#         particles_i = np.load(particles_path, mmap_mode="r")[:, sampled_indices_i]
 #         particles[i] = particles_i
-
+#     scene_params = None
 #     n_shapes = 1
 #     return particles, n_shapes, scene_params
 
@@ -680,7 +693,7 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
     if args.env in ["RigidFall", "MassRope", "LatteArt"]:
         queries = np.arange(n_particle)
         anchors = np.arange(n_particle)
-
+    
     rels += find_relations_neighbor(pos, queries, anchors, args.neighbor_radius, 2, var)
     # rels += find_k_relations_neighbor(args.neighbor_k, pos, queries, anchors, args.neighbor_radius, 2, var)
 
@@ -738,9 +751,11 @@ class FluidLabDataset(Dataset):
         self.data_dir = os.path.join(self.args.dataf, phase)
         self.vision_dir = self.data_dir + "_vision"
         self.stat_path = os.path.join(self.args.dataf, "stat.h5")
-        self.particles, self.n_shapes, self.scene_params = get_scene_info_fluidlab(
+        print(f"args.n_rollout: {args.n_rollout}")
+        self.all_particles, self.n_shape, self.all_scene_params = get_scene_info_fluidlab(
             args, self.data_dir
         )
+        self.n_particle = self.all_particles.shape[-2]
         if args.gen_data:
             os.system("mkdir -p " + self.data_dir)
         if args.gen_vision:
@@ -777,39 +792,16 @@ class FluidLabDataset(Dataset):
         idx_rollout = idx // offset
         st_idx = idx % offset
         ed_idx = st_idx + args.sequence_length
-        sampled_idxs = None
         if args.stage in ["dy"]:
             # load ground truth data
             attrs, particles, Rrs, Rss = [], [], [], []
             max_n_rel = 0
+            scene_params = self.all_scene_params[idx_rollout]
             for t in range(st_idx, ed_idx):
                 # load data
-                data_path = os.path.join(
-                    self.data_dir, str(idx_rollout), str(t) + ".hdf5"
-                )
-                # data = load_data(self.data_names, data_path, sampled_idxs)
-                # points = data[0]
-                points = np.random.rand(300, 3)
-                # load scene param
-                if t == st_idx:
-                    params_path = os.path.join(
-                        self.data_dir, str(idx_rollout), "stat.hdf5"
-                    )
-                    points = torch.from_numpy(points).unsqueeze(0).to(self.device)
-                    points, sampled_idxs = sample_farthest_points(points, K=self.K)
-                    sampled_idxs = sampled_idxs.squeeze(0).cpu().numpy()
-                    n_shape, scene_params = get_scene_info_fluidlab(
-                        data, params_path, sampled_idxs
-                    )
-                    # scene_params = sampled_idxs # We can get away with doing this in the current code lol
-                    points = points.squeeze(0)
-                    n_particle = points.shape[0]
-
-                # attr: (n_p + n_s) x attr_dim
-                # particle (unnormalized): (n_p + n_s) x state_dim
-                # Rr, Rs: n_rel x (n_p + n_s)
+                points = self.all_particles[idx_rollout, t] 
                 attr, particle, Rr, Rs = prepare_input(
-                    points, n_particle, n_shape, self.args
+                    points, self.n_particle, self.n_shape, self.args
                 )
 
                 max_n_rel = max(max_n_rel, Rr.size(0))
@@ -830,9 +822,9 @@ class FluidLabDataset(Dataset):
                 if t < args.n_his:
                     # add noise to observation frames - idx smaller than n_his
                     noise = (
-                        np.random.randn(n_particle, 3) * args.std_d * args.augment_ratio
+                        np.random.randn(self.n_particle, 3) * args.std_d * args.augment_ratio
                     )
-                    particles[t][:n_particle] += noise
+                    particles[t][:self.n_particle] += noise
         else:
             AssertionError("Unknown stage %s" % args.stage)
 
@@ -849,17 +841,17 @@ class FluidLabDataset(Dataset):
             for i in range(len(Rrs)):
                 Rr, Rs = Rrs[i], Rss[i]
                 Rr = torch.cat(
-                    [Rr, torch.zeros(max_n_rel - Rr.size(0), n_particle + n_shape)], 0
+                    [Rr, torch.zeros(max_n_rel - Rr.size(0), self.n_particle + self.n_shape)], 0
                 )
                 Rs = torch.cat(
-                    [Rs, torch.zeros(max_n_rel - Rs.size(0), n_particle + n_shape)], 0
+                    [Rs, torch.zeros(max_n_rel - Rs.size(0), self.n_particle + self.n_shape)], 0
                 )
                 Rrs[i], Rss[i] = Rr, Rs
             Rr = torch.FloatTensor(np.stack(Rrs))
             Rs = torch.FloatTensor(np.stack(Rss))
 
         if args.stage in ["dy"]:
-            return attr, particles, n_particle, n_shape, scene_params, Rr, Rs
+            return attr, particles, self.n_particle, self.n_shape, scene_params, Rr, Rs
 
 
 class PhysicsFleXDataset(Dataset):

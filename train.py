@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 from config import gen_args
-# from data import PhysicsFleXDataset, FluidLabDataset
+from data import PhysicsFleXDataset, FluidLabDataset
 from data import prepare_input, get_scene_info, get_env_group
 from models import Model, ChamferLoss
 from utils import make_graph, check_gradient, set_seed, AverageMeter, get_lr, Tee

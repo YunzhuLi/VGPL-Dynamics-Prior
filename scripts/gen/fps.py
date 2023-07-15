@@ -1,4 +1,6 @@
 from pytorch3d.ops import sample_farthest_points
+import numpy as np
+from time import time
 import torch
 import os
 import h5py
@@ -13,22 +15,23 @@ def main():
     parser.add_argument("--horizon", type=int, default=250)
     args = parser.parse_args()
     for i in range(args.n_trajs):
-        # read in the particle info at the last time step
-        f = h5py.File(f"{args.trajf}/{i}/{args.horizon - 1}.hdf5", "r")
-        points = f["x"][:]
+        # read in all the particles info for given trajectory
+        a = time()
+        try:
+            traj = np.load(f"{args.trajf}/{i}/x.npy", mmap_mode="r") # (T, N, 3)
+        except:
+            continue
+        # consider only the particle positions at the last timestep for fps
+        points = traj[-1].copy()
         points = torch.from_numpy(points).unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
         sampled_points, sampled_indices = sample_farthest_points(points, K=args.k)
         sampled_points = sampled_points.squeeze(0)
-        sampled_indices = sampled_indices.squeeze(0)
-        stat = h5py.File(f"{args.trajf}/{i}/stat.hdf5", "a")
-        try:
-            stat.create_dataset("sampled_points", data=sampled_points.cpu().numpy(), dtype='float32', compression="gzip", chunks=True, compression_opts=9)
-            stat.create_dataset("sampled_indices", data=sampled_indices.cpu().numpy(), dtype='int32', compression="gzip", chunks=True, compression_opts=9)
-        except ValueError:
-            pass
-        stat.close()
-        print(f"Conducted FPS for trajectory {i}!")
-        f.close()
+        sampled_indices = sampled_indices.squeeze(0).cpu().numpy()
+        # traj_subsampled = traj[:, sampled_indices]
+        np.save(f"{args.trajf}/{i}/fps.npy", sampled_indices)
+        # np.save(f"{args.trajf}/{i}/x_lite.npy", traj_subsampled)
+        # np.save(f"{args.trajf}/{i}/x_t.npy", traj.transpose((1, 0, 2)))
+        print(f"Conducted FPS for trajectory {i}!", time() - a, "seconds!")
 
 
 
