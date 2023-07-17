@@ -5,7 +5,7 @@ python train.py 		\
 	--gen_data 0 		\
 	--gen_stat 0		\
 	--gen_vision 0		\
-	--num_workers 2 	\
+	--num_workers 10 	\
 	--resume 0		\
 	--resume_epoch 0	\
 	--resume_iter 0		\

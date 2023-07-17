@@ -519,9 +519,13 @@ def worker_func(args):
     existing_shm.close()
 
 
-def get_scene_info_fluidlab(args, data_path):
+def get_scene_info_fluidlab(args, data_path, phase):
     global shm_name, shm_name_indices, n_rollout, time_step
     n_rollout, time_step = args.n_rollout, args.time_step
+    if phase == "valid":
+        n_rollout = args.n_rollout_valid
+    else:
+        n_rollout = args.n_rollout
     k, state_dim = args.k, args.state_dim
     particles = np.zeros((n_rollout, k, time_step, state_dim))
     sampled_indices = np.zeros((n_rollout, k), dtype=int)
@@ -543,7 +547,7 @@ def get_scene_info_fluidlab(args, data_path):
         pool.map(worker_func, [(i, data_path, k, state_dim) for i in range(n_rollout)])
     print(time() - a, "seconds")
     # Load scene params
-    params_path = os.path.join(data_path, str(100), "stat.npy")
+    params_path = os.path.join(data_path, "0", "stat.npy")
     scene_params = np.load(params_path, mmap_mode="r")
     scene_params = np.expand_dims(scene_params.copy(), 0)
     scene_params = np.squeeze(scene_params[:, np_array_indices], 0)
@@ -743,7 +747,7 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=300):
+    def __init__(self, args, phase, K=100):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
@@ -751,9 +755,8 @@ class FluidLabDataset(Dataset):
         self.data_dir = os.path.join(self.args.dataf, phase)
         self.vision_dir = self.data_dir + "_vision"
         self.stat_path = os.path.join(self.args.dataf, "stat.h5")
-        print(f"args.n_rollout: {args.n_rollout}")
         self.all_particles, self.n_shape, self.all_scene_params = get_scene_info_fluidlab(
-            args, self.data_dir
+            args, self.data_dir, phase
         )
         self.n_particle = self.all_particles.shape[-2]
         if args.gen_data:
@@ -768,9 +771,10 @@ class FluidLabDataset(Dataset):
         if phase == "train":
             self.n_rollout = int(self.args.n_rollout * ratio)
         elif phase == "valid":
-            self.n_rollout = self.args.n_rollout - int(self.args.n_rollout * ratio)
+            self.n_rollout = args.n_rollout_valid
         else:
             raise AssertionError("Unknown phase")
+        print(f"phase: {phase} self.n_rollout: {self.n_rollout}")
 
     def __len__(self):
         """

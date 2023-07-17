@@ -1,6 +1,6 @@
 import os
 import tqdm
-# import wandb
+import wandb
 import time
 import sys
 import copy
@@ -30,19 +30,18 @@ def main():
 
     tee = Tee(os.path.join(args.outf, "train.log"), "w")
 
-    # wandb.init(project="vgpl-training", config=args)
+    # wandb.init(project="vgpl-training", config=args, name=args.env)
 
     ### training
 
     # load training data
 
-    # phases = ["train", "valid"] if args.eval == 0 else ["valid"]
-    phases = ["train"]
+    phases = ["train", "valid"] if args.eval == 0 else ["valid"]
+    # phases = ["train"]
     if args.env in ["LatteArt"]:
         datasets = {phase: FluidLabDataset(args, phase) for phase in phases}
     else:
         datasets = {phase: PhysicsFleXDataset(args, phase) for phase in phases}
-    datasets["train"][817]
     for phase in phases:
         if args.gen_data:
             datasets[phase].gen_data(args.env)
@@ -60,6 +59,7 @@ def main():
         for phase in phases
     }
 
+    datasets["train"][817]
     # create model and train
     use_gpu = torch.cuda.is_available()
     model = Model(args, use_gpu)
@@ -226,6 +226,7 @@ def main():
                         #         "meter_loss": meter_loss.avg,
                         #         "loss_raw": loss_raw.item(),
                         #         "meter_loss_raw_avg": meter_loss_raw.avg,
+                        #         "valid_loss": best_valid_loss
                         #     }
                         # )
 
