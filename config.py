@@ -185,7 +185,7 @@ def gen_args():
         else:
             suffix += '_nIns_' + str(args.n_instance)
         args.outf = "dump/dump_LatteArt"
-        args.evalf = 'dump/dump_MassRope/' + args.evalf + '_' + args.stage + suffix
+        args.evalf = 'dump/dump_LatteArt/' + args.evalf + '_' + args.stage + suffix
         args.mean_p = np.array([0.06443707, 1.09444374, 0.04942945])
         args.std_p = np.array([0.45214754, 0.29002383, 0.41175843])
         args.mean_d = np.array([-0.00097918, -0.00033966, -0.00080952])

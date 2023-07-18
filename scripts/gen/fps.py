@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--n_trajs", type=int)
     parser.add_argument("--horizon", type=int, default=250)
     args = parser.parse_args()
-    for i in range(700, 800):
+    for i in range(args.n_trajs):
         # read in all the particles info for given trajectory
         a = time()
         try:
@@ -27,10 +27,10 @@ def main():
         sampled_points, sampled_indices = sample_farthest_points(points, K=args.k)
         sampled_points = sampled_points.squeeze(0)
         sampled_indices = sampled_indices.squeeze(0).cpu().numpy()
-        # traj_subsampled = traj[:, sampled_indices]
-        # np.save(f"{args.trajf}/{i}/fps.npy", sampled_indices)
+        # traj_subsampled = traj[:, sacmpled_indices]
+        np.save(f"{args.trajf}/{i}/fps.npy", sampled_indices)
         # np.save(f"{args.trajf}/{i}/x_lite.npy", traj_subsampled)
-        np.save(f"{args.trajf}/{i}/x_t.npy", traj.transpose((1, 0, 2)))
+        # np.save(f"{args.trajf}/{i}/x_t.npy", traj.transpose((1, 0, 2)))
         print(f"Conducted FPS for trajectory {i}!", time() - a, "seconds!")
 
 

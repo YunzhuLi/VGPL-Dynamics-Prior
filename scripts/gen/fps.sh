@@ -1,5 +1,5 @@
 CONDA_ENV=vgpl_new
-K=100
+K=300
 N_TRAJS_VALID=10
 N_TRAJS_TRAIN=1000
 TRAJF_TRAIN=data/data_LatteArt/train

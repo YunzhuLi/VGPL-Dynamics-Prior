@@ -28,15 +28,18 @@ def store_data(data_names, data, path):
     hf.close()
 
 
-def load_data(data_names, path, idxs=None):
-    hf = h5py.File(path, "r")
-    data = []
-    for i in range(len(data_names)):
-        d = np.array(hf.get(data_names[i]))
-        data.append(d)
-    if idxs is not None:
-        data[0] = data[0][idxs]
-    hf.close()
+def load_data(data_names, path, idxs=None, is_fluidlab=False):
+    if is_fluidlab:
+        pass
+    else:
+        hf = h5py.File(path, "r")
+        data = []
+        for i in range(len(data_names)):
+            d = np.array(hf.get(data_names[i]))
+            data.append(d)
+        if idxs is not None:
+            data[0] = data[0][idxs]
+        hf.close()
     return data
 
 
@@ -559,6 +562,23 @@ def get_scene_info_fluidlab(args, data_path, phase):
     return particles, n_shapes, scene_params
 
 
+def load_data_fluidlab(args, data_path):
+    particles_path = os.path.join(data_path, "x_t.npy") 
+    indices_path = os.path.join(data_path, "fps.npy")
+    indices = np.load(indices_path, mmap_mode="r+")
+    params_path = os.path.join(data_path, "stat.npy")
+    particles = np.load(particles_path, mmap_mode="r+")
+    particles = particles[indices]
+    pos_boundary = np.array([[0.5, 0.75, 0.5]])
+    particles = np.transpose(particles, (1, 0, 2))
+    n_particle = particles.shape[1]
+    pos_boundary = np.tile(pos_boundary, (args.time_step, 1, 1) )
+    particles = np.concatenate((particles, pos_boundary), axis=1)
+    scene_params = np.load(params_path, mmap_mode="r+")[indices]
+    scene_params = np.expand_dims(scene_params, 0)
+    n_shapes = 1
+    return particles, n_particle, n_shapes, scene_params, indices.copy()
+
 # def get_scene_info_fluidlab(args, data_path):
 #     particles = np.zeros((args.n_rollout, args.time_step, args.k, args.state_dim))
 #     for i in tqdm.tqdm(range(args.n_rollout)):
@@ -582,7 +602,8 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
     # n_particles (int)
     # scene_params: B x param_dim
     B = scene_params.shape[0]
-
+    if not torch.is_tensor(scene_params):
+        scene_params = torch.FloatTensor(scene_params)
     p_rigid = torch.zeros(B, args.n_instance)
     p_instance = torch.zeros(B, n_particles, args.n_instance)
     physics_param = torch.zeros(B, n_particles)
@@ -608,7 +629,7 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
 
     elif args.env == "LatteArt":
         p_rigid[:] = 0
-        p_instance[:, :, 0] = scene_params == 0
+        p_instance[:, :, 0] = scene_params[:, :n_particles] == 0
         p_instance[:, :, 1] = 1 - p_instance[:, :, 0]
 
     else:

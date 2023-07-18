@@ -302,11 +302,13 @@ def get_l2_loss(g):
     num_particles = len(g)
     return torch.norm(num_particles - torch.norm(g, dim=1, keepdim=True))
 
-def render_vispy():
+def render_vispy(args, p_pred, p_gt, s_gt, group_gt, vis_length, n_particle, idx_episode):
     ### render in VisPy
     import vispy.scene
     from vispy import app
     from vispy.visuals import transforms
+    import cv2
+    # global t_step
 
     particle_size = 0.01
     border = 0.025
@@ -469,10 +471,10 @@ def render_vispy():
 
 
     def update(event):
-        global p1
         global t_step
+        global p1
         global colors
-
+        print(t_step)
         if t_step < vis_length:
             if t_step == 0:
                 print("Rendering ground truth")
@@ -552,4 +554,4 @@ def render_vispy():
 
         out.release()
 def render_fluidlab():
-    
+    pass
