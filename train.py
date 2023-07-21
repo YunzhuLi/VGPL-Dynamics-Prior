@@ -1,12 +1,6 @@
 import os
 import tqdm
 import wandb
-import time
-import sys
-import copy
-from progressbar import ProgressBar
-
-import argparse
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -18,7 +12,7 @@ from config import gen_args
 from data import PhysicsFleXDataset, FluidLabDataset
 from data import prepare_input, get_scene_info, get_env_group
 from models import Model, ChamferLoss
-from utils import make_graph, check_gradient, set_seed, AverageMeter, get_lr, Tee
+from utils import set_seed, AverageMeter, get_lr, Tee
 from utils import count_parameters, my_collate
 
 def main():
@@ -30,7 +24,7 @@ def main():
 
     tee = Tee(os.path.join(args.outf, "train.log"), "w")
 
-    wandb.init(project="vgpl-training", config=args, name=args.env)
+    # wandb.init(project="vgpl-training", config=args, name=args.env)
 
     ### training
 
@@ -219,15 +213,15 @@ def main():
                                 meter_loss_raw.avg,
                             )
                         )
-                        wandb.log(
-                            {
-                                "loss": loss.item(),
-                                "meter_loss": meter_loss.avg,
-                                "loss_raw": loss_raw.item(),
-                                "meter_loss_raw_avg": meter_loss_raw.avg,
-                                "valid_loss": best_valid_loss
-                            }
-                        )
+                        # wandb.log(
+                        #     {
+                        #         "loss": loss.item(),
+                        #         "meter_loss": meter_loss.avg,
+                        #         "loss_raw": loss_raw.item(),
+                        #         "meter_loss_raw_avg": meter_loss_raw.avg,
+                        #         "valid_loss": best_valid_loss
+                        #     }
+                        # )
 
                 # update model parameters
                 if phase == "train":
