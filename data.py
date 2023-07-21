@@ -1,10 +1,12 @@
 from multiprocessing import Pool, shared_memory
+from multiprocessing.pool import ThreadPool
 import os
 import cv2
 import time
 import h5py
 import tqdm
 import matplotlib.pyplot as plt
+from config import gen_args
 from mpl_toolkits.mplot3d import axes3d, Axes3D
 from pytorch3d.ops import sample_farthest_points
 import numpy as np
@@ -823,9 +825,13 @@ class FluidLabDataset(Dataset):
         self.vision_dir = self.data_dir + "_vision"
         self.bottom_cup_xyz = torch.Tensor([0.5, 0.05, 0.5]).to(torch.float64).to("cuda")
         self.stat_path = os.path.join(self.args.dataf, "stat.h5")
-        self.all_particles, self.n_shape, self.all_scene_params, self.all_shape_quats = get_scene_info_fluidlab(
-            args, self.data_dir, phase
-        )
+        args.n_rollout = 100
+        args.time_step = 1000
+        self.data_dir = "data/data_Pouring/train"
+        args.env = "Pouring"
+        a = time()
+        self.get_scene_info(args, self.data_dir, phase)
+        print(time() - a, "seconds!")
         self.n_particle = self.K
         if args.gen_data:
             os.system("mkdir -p " + self.data_dir)
@@ -844,6 +850,32 @@ class FluidLabDataset(Dataset):
             raise AssertionError("Unknown phase")
         print(f"phase: {phase} self.n_rollout: {self.n_rollout}")
 
+    def load_trajs(self, args):
+        idx, data_path, k, state_dim = args
+        data_path = "data/data_Pouring/train"
+        particles_path = os.path.join(data_path, str(idx), "x_t.npy")
+        indices_path = os.path.join(data_path, str(idx), "fps.npy")
+        quat_path = os.path.join(data_path, str(idx), "quat.npy")
+        indices_i = np.load(indices_path, mmap_mode="r+")
+        loaded_particles = np.load(particles_path, mmap_mode="r+")
+        particles_i = np.concatenate((loaded_particles[indices_i], np.expand_dims(loaded_particles[-1], 0)), axis=0)
+        self.particles[idx] = particles_i
+        self.sampled_indices[idx] = indices_i
+    def get_scene_info(self, args, data_path, phase):
+        n_rollout, time_step = args.n_rollout, args.time_step
+        if phase == 'valid':
+            n_rollout = args.n_rollout_valid
+        else:
+            n_rollout = args.n_rollout
+            n_rollout = 100
+        k, state_dim = args.k, args.state_dim
+        time_step = 1000
+        self.particles = np.zeros((n_rollout, k + 1, time_step, state_dim))
+        self.sampled_indices = np.zeros((n_rollout, k), dtype=int)
+        with ThreadPool(1) as pool:
+            pool.map(self.load_trajs, [(i, data_path, k, state_dim) for i in range(n_rollout)])
+        self.particles = np.transpose(self.particles, (0, 2, 1, 3))
+        
     def __len__(self):
         """
         Each data point is consisted of a whole trajectory
@@ -1141,3 +1173,6 @@ class PhysicsFleXDataset(Dataset):
 
         if args.stage in ["dy"]:
             return attr, particles, n_particle, n_shape, scene_params, Rr, Rs
+
+if __name__ == "__main__":
+    fl = FluidLabDataset(gen_args(), "train", 300)
