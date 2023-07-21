@@ -1,1 +1,1 @@
-bash /viscam/projects/fluid-manip/VGPL-Dynamics-Prior/scripts/dynamics/train_LatteArt_dy.sh
+bash /viscam/projects/fluid-manip/VGPL-Dynamics-Prior/scripts/dynamics/train_Pouring_dy.sh

@@ -21,8 +21,9 @@ def main():
             traj = np.load(f"{args.trajf}/{i}/x.npy", mmap_mode="r") # (T, N, 3)
         except Exception as e:
             print(e)
+            continue
         # consider only the particle positions at the last timestep for fps
-        points = traj[-1].copy()
+        points = traj[0, :-1].copy()
         points = torch.from_numpy(points).unsqueeze(0).to("cuda" if torch.cuda.is_available() else "cpu")
         sampled_points, sampled_indices = sample_farthest_points(points, K=args.k)
         sampled_points = sampled_points.squeeze(0)
@@ -30,7 +31,7 @@ def main():
         # traj_subsampled = traj[:, sacmpled_indices]
         np.save(f"{args.trajf}/{i}/fps.npy", sampled_indices)
         # np.save(f"{args.trajf}/{i}/x_lite.npy", traj_subsampled)
-        # np.save(f"{args.trajf}/{i}/x_t.npy", traj.transpose((1, 0, 2)))
+        np.save(f"{args.trajf}/{i}/x_t.npy", traj.transpose((1, 0, 2)))
         print(f"Conducted FPS for trajectory {i}!", time() - a, "seconds!")
 
 

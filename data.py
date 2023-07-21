@@ -17,7 +17,6 @@ from torch.utils.data import Dataset
 
 from utils import rand_int, rand_float
 
-
 ### from DPI
 
 
@@ -502,48 +501,64 @@ def worker_func(args):
     idx, data_path, k, state_dim = args
     particles_path = os.path.join(data_path, str(idx), "x_t.npy")
     indices_path = os.path.join(data_path, str(idx), "fps.npy")
+    quat_path = os.path.join(data_path, str(idx), "quat.npy")
     indices_i = np.load(indices_path, mmap_mode="r+")
     loaded_particles = np.load(particles_path, mmap_mode="r+")
-    particles_i = loaded_particles[indices_i]
+    particles_i = np.concatenate((loaded_particles[indices_i], np.expand_dims(loaded_particles[-1], 0)), axis=0)
+    quats_i = np.load(quat_path)
     # Access the existing shared memory
     existing_shm = shared_memory.SharedMemory(name=shm_name)
     existing_shm_indices = shared_memory.SharedMemory(name=shm_name_indices)
+    existing_shm_quats = shared_memory.SharedMemory(name=shm_name_quats)
     np_array = np.ndarray(
-        (n_rollout, k, time_step, state_dim), dtype="float", buffer=existing_shm.buf
+        (n_rollout, k + 1, time_step, state_dim), dtype="float", buffer=existing_shm.buf
     )
     np_array_indices = np.ndarray(
         (n_rollout, k), dtype=int, buffer=existing_shm_indices.buf
+    )
+    np_array_quats = np.ndarray(
+        (n_rollout, time_step, 4), dtype='float64', buffer=existing_shm_quats.buf
     )
 
     # Write data to shared memory
     np_array[idx] = particles_i
     np_array_indices[idx] = indices_i
+    np_array_quats[idx] = quats_i
     existing_shm_indices.close()
     existing_shm.close()
+    existing_shm_quats.close()
 
 
 def get_scene_info_fluidlab(args, data_path, phase):
     global shm_name, shm_name_indices, n_rollout, time_step
+    global shm_name_quats
     n_rollout, time_step = args.n_rollout, args.time_step
     if phase == "valid":
         n_rollout = args.n_rollout_valid
     else:
         n_rollout = args.n_rollout
     k, state_dim = args.k, args.state_dim
-    particles = np.zeros((n_rollout, k, time_step, state_dim))
+    particles = np.zeros((n_rollout, k + 1, time_step, state_dim))
     sampled_indices = np.zeros((n_rollout, k), dtype=int)
+    quats = np.zeros((n_rollout, time_step, 4))
     shm = shared_memory.SharedMemory(create=True, size=particles.nbytes)
     shm_indices = shared_memory.SharedMemory(create=True, size=sampled_indices.nbytes)
+    shm_quats = shared_memory.SharedMemory(create=True, size=quats.nbytes)
     shm_name = shm.name  # Save shared memory name globally
     shm_name_indices = shm_indices.name
+    shm_name_quats = shm_quats.name
     np_array = np.ndarray(
-        (n_rollout, k, time_step, state_dim), dtype="float64", buffer=shm.buf
+        (n_rollout, k + 1, time_step, state_dim), dtype="float64", buffer=shm.buf
     )
     np_array_indices= np.ndarray(
         (n_rollout, k), dtype=int, buffer=shm_indices.buf
     )
+    np_array_quats = np.ndarray(
+        (n_rollout, time_step, 4), dtype='float64', buffer=shm_quats.buf
+    )
     np_array_indices[:] = sampled_indices[:]
     np_array[:] = particles[:]
+    np_array_quats[:] = quats[:]
 
     a = time()
     with Pool(10) as pool:
@@ -556,10 +571,15 @@ def get_scene_info_fluidlab(args, data_path, phase):
     scene_params = np.squeeze(scene_params[:, np_array_indices], 0)
     # Close and unlink shared memory
     particles = np.copy(np_array.transpose(0, 2, 1, 3)[:])
+    quats = np.copy(np_array_quats[:])
     shm.close()
     shm.unlink()
+    shm_indices.close()
+    shm_indices.unlink()
+    shm_quats.close()
+    shm_quats.unlink()
     n_shapes = 1
-    return particles, n_shapes, scene_params
+    return particles, n_shapes, scene_params, quats
 
 
 def load_data_fluidlab(args, data_path):
@@ -579,25 +599,36 @@ def load_data_fluidlab(args, data_path):
     n_shapes = 1
     return particles, n_particle, n_shapes, scene_params, indices.copy()
 
-# def get_scene_info_fluidlab(args, data_path):
-#     particles = np.zeros((args.n_rollout, args.time_step, args.k, args.state_dim))
-#     for i in tqdm.tqdm(range(args.n_rollout)):
-#         # if i == 100:
-#         #     params_path = os.path.join(data_path, str(i), "stat.npy")
-#         #     try:
-#         #         scene_params = np.load(params_path)
-#         #     except:
-#         #         pass
-#         fps_path = os.path.join(data_path, str(i), "fps.npy")
-#         sampled_indices_i = np.load(fps_path, mmap_mode="r")
-#         particles_path = os.path.join(data_path, str(i), "x.npy")
-#         particles_i = np.load(particles_path, mmap_mode="r")[:, sampled_indices_i]
-#         particles[i] = particles_i
-#     scene_params = None
-#     n_shapes = 1
-#     return particles, n_shapes, scene_params
+def rotation_matrix_from_quaternion(params):
+        # params: (B * n_instance) x 4
+        # w, x, y, z
 
+        one = torch.ones(1, 1)
+        zero = torch.zeros(1, 1)
+        use_gpu = True
+        if use_gpu:
+            one = one.cuda()
+            zero = zero.cuda()
 
+        # multiply the rotation matrix from the right-hand side
+        # the matrix should be the transpose of the conventional one
+
+        # Reference
+        # http://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToMatrix/index.htm
+
+        params = params / torch.norm(params, dim=1, keepdim=True)
+        w, x, y, z = \
+                params[:, 0].view(-1, 1, 1), params[:, 1].view(-1, 1, 1), \
+                params[:, 2].view(-1, 1, 1), params[:, 3].view(-1, 1, 1)
+
+        rot = torch.cat((
+            torch.cat((one - y * y * 2 - z * z * 2, x * y * 2 + z * w * 2, x * z * 2 - y * w * 2), 2),
+            torch.cat((x * y * 2 - z * w * 2, one - x * x * 2 - z * z * 2, y * z * 2 + x * w * 2), 2),
+            torch.cat((x * z * 2 + y * w * 2, y * z * 2 - x * w * 2, one - x * x * 2 - y * y * 2), 2)), 1)
+
+        # rot: (B * n_instance) x 3 x 3
+        return rot
+    
 def get_env_group(args, n_particles, scene_params, use_gpu=False):
     # n_particles (int)
     # scene_params: B x param_dim
@@ -627,11 +658,10 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
         p_instance[:, :n_rigid_particle, 0] = 1
         p_instance[:, n_rigid_particle:, 1] = 1
 
-    elif args.env == "LatteArt":
+    elif args.env in ["LatteArt", "Pouring"]:
         p_rigid[:] = 0
         p_instance[:, :, 0] = scene_params[:, :n_particles] == 0
         p_instance[:, :, 1] = 1 - p_instance[:, :, 0]
-
     else:
         raise AssertionError("Unsupported env")
 
@@ -646,7 +676,7 @@ def get_env_group(args, n_particles, scene_params, use_gpu=False):
     return [p_rigid, p_instance, physics_param]
 
 
-def prepare_input(positions, n_particle, n_shape, args, var=False):
+def prepare_input(positions, n_particle, n_shape, args, bottom_cup_xyz, var=False, shape_quat=None):
     # positions: (n_p + n_s) x 3
 
     verbose = args.verbose_data
@@ -710,12 +740,28 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
         cup = np.ones(nodes.shape[0], dtype=int) * n_particle
         rels += [np.stack([nodes, cup], axis=1)]
 
+    elif args.env == "Pouring":
+        pos = (
+            positions.cpu().numpy()[:n_particle]
+            if torch.is_tensor(positions)
+            else positions[:n_particle]
+        )
+        # shape_quat = np.expand_dims(shape_quat, 0)
+        # shape_quat = torch.from_numpy(shape_quat).to(torch.float64).to("cuda")
+        # rot_matrix = rotation_matrix_from_quaternion(shape_quat)
+        # bottom_cup_xyz = (bottom_cup_xyz @ rot_matrix).squeeze(0)
+        # positions[-1] = bottom_cup_xyz.cpu().numpy()
+        # dis = np.sqrt(np.sum((positions[n_particle] - positions[:n_particle]) ** 2, 1))
+        # nodes = np.nonzero(dis < args.neighbor_radius)[0]
+        # cup = np.ones(nodes.shape[0], dtype=int) * n_particle
+        # rels += [np.stack([nodes, cup], axis=1)]
+        
     else:
         AssertionError("Unsupported env %s" % args.env)
 
     ##### add relations between leaf particles
 
-    if args.env in ["RigidFall", "MassRope", "LatteArt"]:
+    if args.env in ["RigidFall", "MassRope", "LatteArt", "Pouring"]:
         queries = np.arange(n_particle)
         anchors = np.arange(n_particle)
     
@@ -764,27 +810,28 @@ def prepare_input(positions, n_particle, n_shape, args, var=False):
     # attr: (n_p + n_s) x attr_dim
     # particle (unnormalized): (n_p + n_s) x state_dim
     # Rr, Rs: n_rel x (n_p + n_s)
-    return attr, particle, Rr, Rs
+    return attr, particle, Rr, Rs, bottom_cup_xyz
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=100):
+    def __init__(self, args, phase, K=300):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
         args.k = self.K = K
         self.data_dir = os.path.join(self.args.dataf, phase)
         self.vision_dir = self.data_dir + "_vision"
+        self.bottom_cup_xyz = torch.Tensor([0.5, 0.05, 0.5]).to(torch.float64).to("cuda")
         self.stat_path = os.path.join(self.args.dataf, "stat.h5")
-        self.all_particles, self.n_shape, self.all_scene_params = get_scene_info_fluidlab(
+        self.all_particles, self.n_shape, self.all_scene_params, self.all_shape_quats = get_scene_info_fluidlab(
             args, self.data_dir, phase
         )
-        self.n_particle = self.all_particles.shape[-2]
+        self.n_particle = self.K
         if args.gen_data:
             os.system("mkdir -p " + self.data_dir)
         if args.gen_vision:
             os.system("mkdir -p " + self.vision_dir)
-        if args.env in ["LatteArt"]:
+        if args.env in ["LatteArt", "Pouring"]:
             self.data_names = ["x"]
         else:
             raise AssertionError("Unsupported env")
@@ -825,8 +872,9 @@ class FluidLabDataset(Dataset):
             for t in range(st_idx, ed_idx):
                 # load data
                 points = self.all_particles[idx_rollout, t] 
-                attr, particle, Rr, Rs = prepare_input(
-                    points, self.n_particle, self.n_shape, self.args
+                shape_quat = self.all_shape_quats[idx_rollout,t]
+                attr, particle, Rr, Rs, self.bottom_cup_xyz = prepare_input(
+                    points, self.n_particle, self.n_shape, self.args, self.bottom_cup_xyz, shape_quat=shape_quat,
                 )
 
                 max_n_rel = max(max_n_rel, Rr.size(0))

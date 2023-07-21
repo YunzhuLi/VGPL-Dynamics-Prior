@@ -190,6 +190,25 @@ def gen_args():
         args.std_p = np.array([0.45214754, 0.29002383, 0.41175843])
         args.mean_d = np.array([-0.00097918, -0.00033966, -0.00080952])
         args.std_d = np.array([0.02086366, 0.0145161, 0.01856096])
+    elif args.env == "Pouring":
+        args.n_rollout = 100
+        args.n_rollout_valid = 10
+        args.time_step = 1000
+        args.state_dim = 3
+        args.attr_dim = 0
+        args.neighbor_radius = 0.35
+        args.neighbor_k = -1
+        suffix = ''
+        if args.n_instance == -1:
+            args.n_instance = 2
+        else:
+            suffix += '_nIns_' + str(args.n_instance)
+        args.outf = "dump/dump_Pouring"
+        args.evalf = 'dump/dump_Pouring/' + args.evalf + '_' + args.stage + suffix
+        args.mean_p = np.array([0.06443707, 1.09444374, 0.04942945])
+        args.std_p = np.array([0.45214754, 0.29002383, 0.41175843])
+        args.mean_d = np.array([-0.00097918, -0.00033966, -0.00080952])
+        args.std_d = np.array([0.02086366, 0.0145161, 0.01856096])
 
     else:
         raise AssertionError("Unsupported env")

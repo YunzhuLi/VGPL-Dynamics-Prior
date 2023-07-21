@@ -30,15 +30,15 @@ def main():
 
     tee = Tee(os.path.join(args.outf, "train.log"), "w")
 
-    # wandb.init(project="vgpl-training", config=args, name=args.env)
+    wandb.init(project="vgpl-training", config=args, name=args.env)
 
     ### training
 
     # load training data
 
-    phases = ["train", "valid"] if args.eval == 0 else ["valid"]
+    phases = ["train"] if args.eval == 0 else ["valid"]
     # phases = ["train"]
-    if args.env in ["LatteArt"]:
+    if args.env in ["LatteArt", "Pouring"]:
         datasets = {phase: FluidLabDataset(args, phase) for phase in phases}
     else:
         datasets = {phase: PhysicsFleXDataset(args, phase) for phase in phases}
@@ -59,7 +59,6 @@ def main():
         for phase in phases
     }
 
-    datasets["train"][817]
     # create model and train
     use_gpu = torch.cuda.is_available()
     model = Model(args, use_gpu)
@@ -220,15 +219,15 @@ def main():
                                 meter_loss_raw.avg,
                             )
                         )
-                        # wandb.log(
-                        #     {
-                        #         "loss": loss.item(),
-                        #         "meter_loss": meter_loss.avg,
-                        #         "loss_raw": loss_raw.item(),
-                        #         "meter_loss_raw_avg": meter_loss_raw.avg,
-                        #         "valid_loss": best_valid_loss
-                        #     }
-                        # )
+                        wandb.log(
+                            {
+                                "loss": loss.item(),
+                                "meter_loss": meter_loss.avg,
+                                "loss_raw": loss_raw.item(),
+                                "meter_loss_raw_avg": meter_loss_raw.avg,
+                                "valid_loss": best_valid_loss
+                            }
+                        )
 
                 # update model parameters
                 if phase == "train":
