@@ -187,7 +187,6 @@ def prepare_input(
 
         pin = np.ones(nodes.shape[0], dtype=int) * n_particle
         rels += [np.stack([nodes, pin], axis=1)]
-
     elif args.env == "LatteArt":
         pos = (
             positions.cpu().numpy()[:n_particle]
@@ -201,23 +200,12 @@ def prepare_input(
         nodes = np.nonzero(dis < args.neighbor_radius)[0]
         cup = np.ones(nodes.shape[0], dtype=int) * n_particle
         rels += [np.stack([nodes, cup], axis=1)]
-
     elif args.env == "Pouring":
         pos = (
             positions.cpu().numpy()[:n_particle]
             if torch.is_tensor(positions)
             else positions[:n_particle]
         )
-        # shape_quat = np.expand_dims(shape_quat, 0)
-        # shape_quat = torch.from_numpy(shape_quat).to(torch.float64).to("cuda")
-        # rot_matrix = rotation_matrix_from_quaternion(shape_quat)
-        # bottom_cup_xyz = (bottom_cup_xyz @ rot_matrix).squeeze(0)
-        # positions[-1] = bottom_cup_xyz.cpu().numpy()
-        # dis = np.sqrt(np.sum((positions[n_particle] - positions[:n_particle]) ** 2, 1))
-        # nodes = np.nonzero(dis < args.neighbor_radius)[0]
-        # cup = np.ones(nodes.shape[0], dtype=int) * n_particle
-        # rels += [np.stack([nodes, cup], axis=1)]
-
     else:
         AssertionError("Unsupported env %s" % args.env)
 
@@ -276,7 +264,7 @@ def prepare_input(
 
 
 class FluidLabDataset(Dataset):
-    def __init__(self, args, phase, K=300):
+    def __init__(self, args, phase, K=100):
         self.args = args
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.phase = phase
@@ -341,7 +329,7 @@ class FluidLabDataset(Dataset):
         self.all_particles = np.zeros((n_rollout, k + 1, time_step, state_dim))
         self.sampled_indices = np.zeros((n_rollout, k), dtype=int)
         self.all_shape_quats = np.zeros((n_rollout, time_step, 4))
-        with ThreadPool(1) as pool:
+        with ThreadPool(6) as pool:
             pool.map(
                 self.load_trajs,
                 [(i, data_path, k, state_dim) for i in range(n_rollout)],
